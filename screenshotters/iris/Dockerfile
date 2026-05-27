@@ -39,6 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libasound2t64 libpulse0 libdbus-1-3 libibus-1.0-5 libudev1 \
     && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /etc/vulkan/icd.d \
+    && printf '{"file_format_version":"1.0.1","ICD":{"library_path":"libGLX_nvidia.so.0","api_version":"1.4.329"}}\n' \
+        > /etc/vulkan/icd.d/nvidia_icd.json
+
 COPY --from=build /src/iris/build/iris /usr/local/bin/iris
 COPY run.py /screenshotter/run.py
 COPY gamelist.txt /screenshotter/gamelist.txt

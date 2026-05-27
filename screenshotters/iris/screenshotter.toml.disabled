@@ -12,18 +12,26 @@ supported_archives = ["zip"]
 
 [runner]
 requires_gpu = true
-gpu = "dri"
+gpu = "nvidia"
 max_parallel_games = 1
 output_mode = "single-png"
 timeout_seconds = 1200
-docker_mounts = ["/run/user/1000/wayland-0:/run/user/1000/wayland-0"]
+docker_mounts = [
+    "/tmp/.X11-unix:/tmp/.X11-unix",
+    "/run/user/1000:/run/user/1000:ro",
+    "/usr/share/glvnd/egl_vendor.d/10_nvidia.json:/usr/share/glvnd/egl_vendor.d/10_nvidia.json:ro",
+]
 
 [runner.docker_env]
-XDG_RUNTIME_DIR = "/run/user/1000"
-WAYLAND_DISPLAY = "wayland-0"
-SDL_VIDEODRIVER = "wayland"
+NVIDIA_DRIVER_CAPABILITIES = "all"
+DISPLAY = ":0"
+XAUTHORITY = "/run/user/1000/.mutter-Xwaylandauth.J1AYP3"
+SDL_VIDEODRIVER = "x11"
 SDL_AUDIODRIVER = "dummy"
-VK_ICD_FILENAMES = "/usr/share/vulkan/icd.d/radeon_icd.json"
+VK_ICD_FILENAMES = "/etc/vulkan/icd.d/nvidia_icd.json"
+__NV_PRIME_RENDER_OFFLOAD = "1"
+__VK_LAYER_NV_optimus = "NVIDIA_only"
+__GLX_VENDOR_LIBRARY_NAME = "nvidia"
 
 [iris]
 binary = "/usr/local/bin/iris"
