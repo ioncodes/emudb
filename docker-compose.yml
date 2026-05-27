@@ -1,0 +1,28 @@
+services:
+  orchestrator:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      RUST_LOG: info
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-screenshot-bot}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-screenshot-bot@users.noreply.github.com}
+      GIT_COMMITTER_NAME: ${GIT_AUTHOR_NAME:-screenshot-bot}
+      GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-screenshot-bot@users.noreply.github.com}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/roms:/roms:ro
+      - ${PWD}/jobs:${PWD}/jobs
+      - ${PWD}/repos:${PWD}/repos
+      - ${PWD}/state:${PWD}/state
+      - ${PWD}/secrets:${PWD}/secrets:ro
+      - ./screenshotters:/screenshotters:ro
+      - ./config.toml:/app/config.toml:ro
+    command: ["--config", "/app/config.toml"]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}

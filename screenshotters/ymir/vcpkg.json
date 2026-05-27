@@ -1,0 +1,32 @@
+{
+  "dependencies": [
+    "catch2",
+    "cereal",
+    {
+      "name": "curl",
+      "features": [
+        "brotli",
+        "http2",
+        "http3",
+        "ssl",
+        "zstd"
+      ]
+    },
+    "cxxopts",
+    "date",
+    "fmt",
+    "neargye-semver",
+    "nlohmann-json",
+    "openssl",
+    "rtmidi",
+    {
+      "name": "sdl3",
+      "default-features": false
+    },
+    "stb",
+    "tomlplusplus",
+    "zlib",
+    "zstd",
+    "miniz"
+  ]
+}

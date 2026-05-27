@@ -1,0 +1,23 @@
+slug = "ymir"
+
+emulator_repo = "https://github.com/StrikerX3/Ymir.git"
+emulator_default_branch = "master"
+
+archive_slug = "ymir"
+
+rom_subdir = "Sega - Saturn"
+
+supported_direct = ["cue", "chd", "iso", "mds", "ccd"]
+supported_archives = ["zip"]
+
+[runner]
+requires_gpu = false
+max_parallel_games = 20
+output_mode = "multi-frame"
+
+timeout_seconds = 900
+
+[ymir]
+worker_binary = "/usr/local/bin/ymir-screenshotter-worker"
+
+ipl_dir = "/config/ipl"

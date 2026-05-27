@@ -1,0 +1,32 @@
+slug = "iris"
+
+emulator_repo = "https://github.com/allkern/iris.git"
+emulator_default_branch = "iop-cached"
+
+archive_slug = "iris"
+
+rom_subdir = "Sony - PlayStation 2/ps2-downloads"
+
+supported_direct = ["iso", "bin", "cue", "chd", "cso", "zso"]
+supported_archives = ["zip"]
+
+[runner]
+requires_gpu = true
+gpu = "dri"
+max_parallel_games = 1
+output_mode = "single-png"
+timeout_seconds = 1200
+docker_mounts = ["/run/user/1000/wayland-0:/run/user/1000/wayland-0"]
+
+[runner.docker_env]
+XDG_RUNTIME_DIR = "/run/user/1000"
+WAYLAND_DISPLAY = "wayland-0"
+SDL_VIDEODRIVER = "wayland"
+SDL_AUDIODRIVER = "dummy"
+VK_ICD_FILENAMES = "/usr/share/vulkan/icd.d/radeon_icd.json"
+
+[iris]
+binary = "/usr/local/bin/iris"
+bios = "/config/bios/scph39001.bin"
+run_seconds = 20
+grace_seconds = 30

@@ -1,0 +1,5 @@
+T-6802G=2do Aru Koto wa Sando R (Japan)
+T-4305GV1=2Tax Gold (Japan)
+T-18003G=3D Baseball - The Majors (Japan)
+T-15906H=3D Baseball (USA)
+T-11304H=3D Lemmings (Europe)

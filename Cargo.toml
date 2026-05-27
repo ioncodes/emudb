@@ -1,0 +1,33 @@
+[package]
+name = "emu-shot-orchestrator"
+version = "0.1.0"
+edition = "2021"
+description = "Webhook-driven emulator screenshot orchestration system"
+license = "MIT"
+
+[[bin]]
+name = "emu-shot-orchestrator"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+walkdir = "2"
+tempfile = "3"
+zip = "2"
+clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+regex = "1"
+
+[profile.release]
+opt-level = 2

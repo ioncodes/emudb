@@ -1,0 +1,22 @@
+[server]
+bind = "0.0.0.0:8080"
+webhook_secret_env = "WEBHOOK_SECRET"
+
+[paths]
+rom_root = "/roms"
+job_root = "/home/layle/projects/emudb/jobs"
+repo_root = "/home/layle/projects/emudb/repos"
+secret_root = "/home/layle/projects/emudb/secrets"
+screenshotter_root = "/screenshotters"
+
+[upload]
+workers = 100
+submitted_by = "screenshot-bot"
+r2_env_file = "/home/layle/projects/emudb/secrets/r2.env"
+no_push = false
+dry_run = true
+
+[postprocess]
+remove_single_color = true
+solid_tolerance = 2
+dedupe = true

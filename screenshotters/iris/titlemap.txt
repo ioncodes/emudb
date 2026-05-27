@@ -1,0 +1,5 @@
+CrazyTaxi_USA=Crazy Taxi (USA)
+7Wonders_USA=7 Wonders of the Ancient World (USA)
+CakeMania_USA=Cake Mania - Baker's Challenge (USA)
+18Wheeler_USA=18 Wheeler - American Pro Trucker (USA)
+FamilyFeud_USA=Family Feud (USA)
