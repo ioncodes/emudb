@@ -108,24 +108,6 @@ pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<(
         v
     };
 
-    for name in skip {
-        let _ = run_logged(
-            "git",
-            &git(&["config", &format!("submodule.{name}.active"), "false"]),
-            None,
-            log,
-            &[],
-        );
-        let _ = run_logged(
-            "git",
-            &git(&["submodule", "deinit", "-f", name]),
-            None,
-            log,
-            &[],
-        );
-        let _ = std::fs::remove_dir_all(path.join(name));
-    }
-
     let _ = run_logged(
         "git",
         &git(&["submodule", "sync", "--recursive"]),
@@ -148,34 +130,43 @@ pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<(
         log,
         &[],
     )?;
-    if first.status == 0 {
-        return Ok(());
+    if first.status != 0 {
+        tracing::warn!(repo = %p, "submodule update failed; deinit + retry");
+        let _ = run_logged(
+            "git",
+            &git(&["submodule", "deinit", "-f", "--all"]),
+            None,
+            log,
+            &[],
+        );
+        run_checked(
+            "git",
+            &git(&[
+                "submodule",
+                "update",
+                "--init",
+                "--recursive",
+                "--force",
+                "--jobs",
+                "4",
+            ]),
+            None,
+            log,
+            &[],
+            repo_err,
+        )?;
     }
 
-    tracing::warn!(repo = %p, "submodule update failed; deinit + retry");
-    let _ = run_logged(
-        "git",
-        &git(&["submodule", "deinit", "-f", "--all"]),
-        None,
-        log,
-        &[],
-    );
-    run_checked(
-        "git",
-        &git(&[
-            "submodule",
-            "update",
-            "--init",
-            "--recursive",
-            "--force",
-            "--jobs",
-            "4",
-        ]),
-        None,
-        log,
-        &[],
-        repo_err,
-    )?;
+    for name in skip {
+        let _ = run_logged(
+            "git",
+            &git(&["submodule", "deinit", "-f", name]),
+            None,
+            log,
+            &[],
+        );
+        let _ = std::fs::remove_dir_all(path.join(name));
+    }
     Ok(())
 }
 
