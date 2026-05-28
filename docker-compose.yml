@@ -26,9 +26,14 @@ services:
       - ${HOME}/.ssh:/host-ssh:ro
       - ./screenshotters:/screenshotters:ro
       - ./config.toml:/app/config.toml:ro
+      - emudb-staging:/staging
     command: ["--config", "/app/config.toml"]
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+
+volumes:
+  emudb-staging:
+    name: emudb-staging

@@ -166,6 +166,13 @@ pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<(
             &[],
         );
         let _ = std::fs::remove_dir_all(path.join(name));
+        let _ = run_logged(
+            "git",
+            &git(&["update-index", "--skip-worktree", name]),
+            None,
+            log,
+            &[],
+        );
     }
     Ok(())
 }

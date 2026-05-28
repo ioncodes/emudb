@@ -70,26 +70,26 @@ pub fn build_image(
     Ok(())
 }
 
-pub fn run_screenshotter(
+pub fn run_screenshotter_one(
     emu: &EmulatorConfig,
     job_id: &str,
+    game_id: &str,
+    container_input: &str,
     job_dir: &Path,
     secret_root: &Path,
     tag: &str,
     log: &Path,
 ) -> JobResult<()> {
-    let input = job_dir.join("input");
     let output = job_dir.join("output");
-    let manifest = job_dir.join("manifest.json");
     let secrets = secret_root.join(&emu.slug);
 
-    std::fs::create_dir_all(&output)?;
+    std::fs::create_dir_all(output.join(game_id))?;
 
     let mut args: Vec<String> = vec![
         "run".into(),
         "--rm".into(),
         "--name".into(),
-        format!("shot-{}-{}", emu.slug, job_id),
+        format!("shot-{}-{}-{}", emu.slug, job_id, game_id),
     ];
     match emu.gpu_mode {
         GpuMode::Nvidia => {
@@ -106,14 +106,9 @@ pub fn run_screenshotter(
     args.push("none".into());
 
     args.push("-v".into());
-    args.push(format!("{}:/input:ro", input.to_string_lossy()));
+    args.push("emudb-staging:/staging:ro".into());
     args.push("-v".into());
     args.push(format!("{}:/output", output.to_string_lossy()));
-    args.push("-v".into());
-    args.push(format!(
-        "{}:/job/manifest.json:ro",
-        manifest.to_string_lossy()
-    ));
 
     if secrets.exists() {
         args.push("-v".into());
@@ -130,12 +125,14 @@ pub fn run_screenshotter(
     }
 
     args.push(tag.to_string());
-    args.push("--job".into());
-    args.push("/job/manifest.json".into());
-    args.push("--input".into());
-    args.push("/input".into());
-    args.push("--output".into());
-    args.push("/output".into());
+
+    let container_output = format!("/output/{game_id}");
+    for a in &emu.per_game_args {
+        args.push(
+            a.replace("{disc}", container_input)
+                .replace("{out}", &container_output),
+        );
+    }
 
     run_checked("docker", &args, None, log, &[], JobError::DockerRun)?;
     Ok(())

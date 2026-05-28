@@ -115,6 +115,7 @@ pub struct EmulatorConfig {
     pub gpu_mode: GpuMode,
 
     pub max_parallel_games: u32,
+    pub max_parallel_stages: u32,
     pub output_mode: OutputMode,
     pub docker_mounts: Vec<String>,
     pub docker_env: Vec<(String, String)>,
@@ -124,6 +125,8 @@ pub struct EmulatorConfig {
     pub supported_archives: Vec<String>,
 
     pub skip_submodules: Vec<String>,
+
+    pub per_game_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,16 +211,24 @@ struct ShotterRunner {
     gpu: Option<String>,
     #[serde(default = "default_parallel")]
     max_parallel_games: u32,
+    #[serde(default = "default_parallel_stages")]
+    max_parallel_stages: u32,
     #[serde(default)]
     output_mode: Option<String>,
     #[serde(default)]
     docker_mounts: Vec<String>,
     #[serde(default)]
     docker_env: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    per_game_args: Vec<String>,
 }
 
 fn default_parallel() -> u32 {
     1
+}
+
+fn default_parallel_stages() -> u32 {
+    4
 }
 
 impl Config {
@@ -291,6 +302,7 @@ fn discover_emulators(root: &Path) -> Result<HashMap<String, EmulatorConfig>> {
                 },
             ),
             max_parallel_games: sf.runner.max_parallel_games,
+            max_parallel_stages: sf.runner.max_parallel_stages,
             output_mode: sf
                 .runner
                 .output_mode
@@ -306,6 +318,7 @@ fn discover_emulators(root: &Path) -> Result<HashMap<String, EmulatorConfig>> {
             supported_direct: sf.supported_direct,
             supported_archives: sf.supported_archives,
             skip_submodules: sf.skip_submodules,
+            per_game_args: sf.runner.per_game_args,
         };
 
         if let Some(prev) = map.insert(sf.slug.clone(), emu) {

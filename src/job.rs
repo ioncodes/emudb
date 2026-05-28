@@ -2,9 +2,12 @@ use crate::config::Config;
 use crate::error::{JobError, JobResult};
 use crate::state::{JobRegistry, JobRequest, JobStage, JobState, JobStatus};
 use crate::{docker, postprocess, repos, roms, screenshotter, upload, validate};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
 
 fn log_append(path: &Path, line: &str) {
     if let Some(parent) = path.parent() {
@@ -137,50 +140,33 @@ fn run_stages(
     let output_root = job_dir.join("output");
     std::fs::create_dir_all(&output_root)?;
 
-    let batch_size = (emu.max_parallel_games as usize).max(1);
-    let nbatches = resolved.len().div_ceil(batch_size);
-    for (bi, batch) in resolved.chunks(batch_size).enumerate() {
-        let batch_ids: Vec<String> = batch.iter().map(|g| g.id.clone()).collect();
-        log_append(
-            &roms_log,
-            &format!(
-                "=== batch {}/{}: {} game(s) ===",
-                bi + 1,
-                nbatches,
-                batch.len()
-            ),
-        );
+    let total = resolved.len();
+    status.games_total = Some(total as u32);
+    status.games_done = Some(0);
+    status.eta_at = None;
+    let _ = registry.persist(status);
+    let games_started_at = Utc::now();
 
-        set_stage(registry, status, JobStage::StageInputs);
-        {
-            let mut sink = |l: &str| log_append(&roms_log, l);
-            roms::stage_games(&emu, &req.commit, batch, &job_dir, &mut sink)?;
-        }
-
-        set_stage(registry, status, JobStage::RunScreenshotter);
-        docker::run_screenshotter(
-            &emu,
-            &status.id,
-            &job_dir,
-            &config.paths.secret_root,
-            &tag,
-            &run_log,
-        )?;
-
-        set_stage(registry, status, JobStage::PostprocessFrames);
-        {
-            let mut sink = |l: &str| log_append(&run_log, l);
-            postprocess::postprocess_output(
-                &output_root,
-                &batch_ids,
-                output_mode,
-                &config.postprocess,
-                &mut sink,
-            )?;
-        }
-
-        cleanup_batch_inputs(&job_dir, &batch_ids, &roms_log);
-    }
+    set_stage(registry, status, JobStage::RunScreenshotter);
+    process_games_concurrently(
+        &emu,
+        &resolved,
+        &status.id.clone(),
+        &job_dir,
+        &roms_log,
+        &run_log,
+        &config.paths.secret_root,
+        &tag,
+        &output_root,
+        output_mode,
+        &config.postprocess,
+        (emu.max_parallel_stages as usize).max(1),
+        (emu.max_parallel_games as usize).max(1),
+        registry,
+        status,
+        games_started_at,
+        total,
+    )?;
 
     set_stage(registry, status, JobStage::ValidateOutput);
     validate::validate_output(&output_root, &ids, output_mode)?;
@@ -203,17 +189,209 @@ fn run_stages(
     Ok(Outcome::Completed)
 }
 
-fn cleanup_batch_inputs(job_dir: &Path, ids: &[String], log: &Path) {
-    let input = job_dir.join("input");
-    let scratch = job_dir.join("scratch");
-    for id in ids {
-        let _ = std::fs::remove_dir_all(input.join(id));
-        let _ = std::fs::remove_dir_all(scratch.join(id));
+#[allow(clippy::too_many_arguments)]
+fn process_games_concurrently(
+    emu: &crate::config::EmulatorConfig,
+    resolved: &[roms::ResolvedGame],
+    job_id: &str,
+    job_dir: &Path,
+    roms_log: &Path,
+    run_log: &Path,
+    secret_root: &Path,
+    tag: &str,
+    output_root: &Path,
+    output_mode: crate::config::OutputMode,
+    ppcfg: &crate::config::PostProcessConfig,
+    stage_pool: usize,
+    run_pool: usize,
+    registry: &JobRegistry,
+    status: &mut JobStatus,
+    started_at: DateTime<Utc>,
+    total: usize,
+) -> JobResult<()> {
+    // pending -> stage workers -> ready -> run workers -> prog channel
+    let (pending_tx, pending_rx) = mpsc::channel::<roms::ResolvedGame>();
+    let (ready_tx, ready_rx) = mpsc::sync_channel::<(roms::ResolvedGame, String)>(run_pool);
+    let (prog_tx, prog_rx) = mpsc::channel::<JobResult<String>>();
+
+    for g in resolved {
+        pending_tx.send(g.clone()).expect("pending queue closed");
     }
-    log_append(
-        log,
-        &format!("freed staged inputs for {} game(s)", ids.len()),
-    );
+    drop(pending_tx);
+
+    let pending_rx = Arc::new(Mutex::new(pending_rx));
+    let ready_rx = Arc::new(Mutex::new(ready_rx));
+    let cancel = Arc::new(AtomicBool::new(false));
+
+    let mut stage_handles = Vec::with_capacity(stage_pool);
+    for _ in 0..stage_pool {
+        let rx = pending_rx.clone();
+        let tx = ready_tx.clone();
+        let cancel = cancel.clone();
+        let ptx = prog_tx.clone();
+        let emu = emu.clone();
+        let roms_log = roms_log.to_path_buf();
+
+        let job_id_s = job_id.to_string();
+        stage_handles.push(thread::spawn(move || loop {
+            if cancel.load(Ordering::SeqCst) {
+                return;
+            }
+            let game = match rx.lock().unwrap().recv() {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+            let mut sink = |l: &str| log_append(&roms_log, l);
+            match roms::stage_one_game(&emu, &game, &job_id_s, Path::new("/staging"), &mut sink) {
+                Ok(ci) => {
+                    if tx.send((game, ci)).is_err() {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    let _ = ptx.send(Err(e));
+                    cancel.store(true, Ordering::SeqCst);
+                    return;
+                }
+            }
+        }));
+    }
+    drop(ready_tx);
+
+    let mut run_handles = Vec::with_capacity(run_pool);
+    for _ in 0..run_pool {
+        let rx = ready_rx.clone();
+        let cancel = cancel.clone();
+        let ptx = prog_tx.clone();
+        let emu = emu.clone();
+        let job_id = job_id.to_string();
+        let job_dir = job_dir.to_path_buf();
+        let roms_log = roms_log.to_path_buf();
+        let run_log = run_log.to_path_buf();
+        let secret_root = secret_root.to_path_buf();
+        let tag = tag.to_string();
+        let output_root = output_root.to_path_buf();
+        let ppcfg = ppcfg.clone();
+
+        run_handles.push(thread::spawn(move || loop {
+            if cancel.load(Ordering::SeqCst) {
+                return;
+            }
+            let (game, container_input) = match rx.lock().unwrap().recv() {
+                Ok(item) => item,
+                Err(_) => return,
+            };
+            let result = run_and_postprocess(
+                &emu,
+                &job_id,
+                &game,
+                &container_input,
+                &job_dir,
+                &roms_log,
+                &run_log,
+                &secret_root,
+                &tag,
+                &output_root,
+                output_mode,
+                &ppcfg,
+            );
+            let _ = ptx.send(result);
+        }));
+    }
+    drop(prog_tx);
+
+    let mut done = 0usize;
+    let mut first_err: Option<JobError> = None;
+    while let Ok(r) = prog_rx.recv() {
+        match r {
+            Ok(_id) => {
+                done += 1;
+                update_progress(registry, status, started_at, done, total);
+            }
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(e);
+                    cancel.store(true, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+
+    for h in stage_handles {
+        let _ = h.join();
+    }
+    for h in run_handles {
+        let _ = h.join();
+    }
+
+    if let Some(e) = first_err {
+        return Err(e);
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_and_postprocess(
+    emu: &crate::config::EmulatorConfig,
+    job_id: &str,
+    game: &roms::ResolvedGame,
+    container_input: &str,
+    job_dir: &Path,
+    roms_log: &Path,
+    run_log: &Path,
+    secret_root: &Path,
+    tag: &str,
+    output_root: &Path,
+    output_mode: crate::config::OutputMode,
+    ppcfg: &crate::config::PostProcessConfig,
+) -> JobResult<String> {
+    docker::run_screenshotter_one(
+        emu,
+        job_id,
+        &game.id,
+        container_input,
+        job_dir,
+        secret_root,
+        tag,
+        run_log,
+    )?;
+
+    {
+        let mut sink = |l: &str| log_append(run_log, l);
+        postprocess::postprocess_output(
+            output_root,
+            std::slice::from_ref(&game.id),
+            output_mode,
+            ppcfg,
+            &mut sink,
+        )?;
+    }
+
+    let _ = std::fs::remove_dir_all(Path::new("/staging").join(job_id).join(&game.id));
+    log_append(roms_log, &format!("freed staged inputs for {}", game.id));
+
+    Ok(game.id.clone())
+}
+
+fn update_progress(
+    registry: &JobRegistry,
+    status: &mut JobStatus,
+    started_at: DateTime<Utc>,
+    done: usize,
+    total: usize,
+) {
+    status.games_done = Some(done as u32);
+    let now = Utc::now();
+    let elapsed = (now - started_at).num_milliseconds().max(1) as f64 / 1000.0;
+    let remaining = total.saturating_sub(done);
+    if done > 0 && remaining > 0 {
+        let per_game = elapsed / done as f64;
+        let eta_secs = (per_game * remaining as f64).round() as i64;
+        status.eta_at = Some(now + chrono::Duration::seconds(eta_secs));
+    } else if remaining == 0 {
+        status.eta_at = Some(now);
+    }
+    let _ = registry.persist(status);
 }
 
 fn set_stage(registry: &JobRegistry, status: &mut JobStatus, stage: JobStage) {

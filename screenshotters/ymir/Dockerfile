@@ -48,11 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /src/shotter/build/ymir-screenshotter-worker /usr/local/bin/ymir-screenshotter-worker
-COPY run.py /screenshotter/run.py
-COPY gamelist.txt /screenshotter/gamelist.txt
-COPY titlemap.txt /screenshotter/titlemap.txt
-COPY screenshotter.toml /screenshotter/screenshotter.toml
 
-RUN chmod +x /screenshotter/run.py /usr/local/bin/ymir-screenshotter-worker
+RUN chmod +x /usr/local/bin/ymir-screenshotter-worker
 
-ENTRYPOINT ["python3", "/screenshotter/run.py"]
+ENTRYPOINT ["/usr/local/bin/ymir-screenshotter-worker"]
