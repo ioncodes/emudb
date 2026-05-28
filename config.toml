@@ -4,17 +4,17 @@ webhook_secret_env = "WEBHOOK_SECRET"
 
 [paths]
 rom_root = "/roms"
-job_root = "/home/layle/projects/emudb/jobs"
-repo_root = "/home/layle/projects/emudb/repos"
-secret_root = "/home/layle/projects/emudb/secrets"
+job_root = "/Users/layle/emudb/jobs"
+repo_root = "/Users/layle/emudb/repos"
+secret_root = "/Users/layle/emudb/secrets"
 screenshotter_root = "/screenshotters"
 
 [upload]
 workers = 100
 submitted_by = "screenshot-bot"
-r2_env_file = "/home/layle/projects/emudb/secrets/r2.env"
+r2_env_file = "/Users/layle/emudb/secrets/r2.env"
 no_push = false
-dry_run = true
+dry_run = false
 
 [postprocess]
 remove_single_color = true

@@ -12,7 +12,7 @@ supported_archives = ["zip"]
 
 [runner]
 requires_gpu = false
-max_parallel_games = 20
+max_parallel_games = 4
 output_mode = "multi-frame"
 
 timeout_seconds = 900

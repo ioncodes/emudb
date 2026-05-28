@@ -33,6 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/vcpkg \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
         -DYMIR_CORE_DIR=/src/ymir \
+        -DCMAKE_CXX_FLAGS="-flax-vector-conversions" \
     && cmake --build build --target ymir-screenshotter-worker -j"$(nproc)"
 
 FROM ubuntu:24.04

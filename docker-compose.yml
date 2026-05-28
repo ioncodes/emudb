@@ -11,13 +11,15 @@ services:
       GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-screenshot-bot@users.noreply.github.com}
       GIT_COMMITTER_NAME: ${GIT_AUTHOR_NAME:-screenshot-bot}
       GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-screenshot-bot@users.noreply.github.com}
+      GIT_SSH_COMMAND: "ssh -i /host-ssh/id_ed25519 -o UserKnownHostsFile=/host-ssh/known_hosts -o IdentitiesOnly=yes"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /mnt/roms:/roms:ro
+      - /Volumes/Roms:/roms:ro
       - ${PWD}/jobs:${PWD}/jobs
       - ${PWD}/repos:${PWD}/repos
       - ${PWD}/state:${PWD}/state
       - ${PWD}/secrets:${PWD}/secrets:ro
+      - ${HOME}/.ssh:/host-ssh:ro
       - ./screenshotters:/screenshotters:ro
       - ./config.toml:/app/config.toml:ro
     command: ["--config", "/app/config.toml"]
