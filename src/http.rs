@@ -5,7 +5,7 @@ use crate::upload;
 use axum::{
     extract::{Path as AxPath, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
@@ -24,6 +24,7 @@ pub struct AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(dashboard))
         .route("/healthz", get(healthz))
         .route("/webhook/run", post(webhook_run))
         .route("/jobs", get(list_jobs))
@@ -33,6 +34,12 @@ pub fn router(state: AppState) -> Router {
 
 async fn healthz() -> impl IntoResponse {
     Json(json!({ "ok": true }))
+}
+
+const DASHBOARD_HTML: &str = include_str!("dashboard.html");
+
+async fn dashboard() -> impl IntoResponse {
+    Html(DASHBOARD_HTML)
 }
 
 #[derive(Debug, Deserialize)]

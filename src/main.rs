@@ -49,6 +49,18 @@ async fn main() -> Result<()> {
 
     let registry = JobRegistry::new(config.paths.job_root.clone());
 
+    {
+        let registry = registry.clone();
+        let retention_hours = config.server.job_retention_hours;
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(30 * 60);
+            loop {
+                cleanup_old_jobs(&registry, retention_hours);
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
     let (tx, mut rx) = mpsc::channel::<state::JobStatus>(64);
 
     {
@@ -88,4 +100,27 @@ async fn main() -> Result<()> {
         .context("axum serve")?;
 
     Ok(())
+}
+
+fn cleanup_old_jobs(registry: &JobRegistry, retention_hours: u64) {
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(retention_hours as i64);
+    for status in registry.list() {
+        let terminal = matches!(
+            status.state,
+            state::JobState::Completed
+                | state::JobState::Failed
+                | state::JobState::AlreadyCompleted
+        );
+        if !terminal {
+            continue;
+        }
+        let finished = status.finished_at.unwrap_or(status.created_at);
+        if finished < cutoff {
+            if let Err(e) = registry.remove(&status.id) {
+                tracing::warn!(job = %status.id, error = %e, "failed to remove old job");
+            } else {
+                tracing::info!(job = %status.id, "removed old job (retention expired)");
+            }
+        }
+    }
 }

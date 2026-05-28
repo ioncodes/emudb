@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>emudb jobs</title>
+<style>
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0e0e10; color: #ddd; margin: 1.5rem; line-height: 1.45; }
+  h1 { font-size: 1.1rem; margin: 0 0 1rem; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 0.5rem 0; border-bottom: 1px solid #222; }
+  .id { color: #8ab4ff; }
+  .meta { color: #888; font-size: 0.85rem; }
+  .running { color: #6cd06c; }
+  .completed { color: #888; }
+  .already_completed { color: #888; }
+  .failed { color: #e26060; }
+  .queued { color: #cca85e; }
+  .progress { color: #aaa; }
+  .err { color: #e26060; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<h1>emudb jobs <span class="meta" id="updated"></span></h1>
+<ul id="jobs"><li class="meta">loading…</li></ul>
+<script>
+function fmtState(s) { return '<span class="' + s + '">' + s + '</span>'; }
+function pct(j) {
+  if (j.games_total == null) return '';
+  const d = j.games_done || 0;
+  return ' ' + d + '/' + j.games_total;
+}
+function eta(j) {
+  if (!j.eta_at) return '';
+  const t = new Date(j.eta_at);
+  const now = new Date();
+  const diff = Math.round((t - now) / 1000);
+  if (j.state !== 'running') return '';
+  if (diff <= 0) return ' eta=now';
+  if (diff < 60) return ' eta=' + diff + 's';
+  if (diff < 3600) return ' eta=' + Math.round(diff / 60) + 'm';
+  return ' eta=' + (diff / 3600).toFixed(1) + 'h';
+}
+function render(jobs) {
+  const ul = document.getElementById('jobs');
+  if (!jobs.length) { ul.innerHTML = '<li class="meta">no jobs</li>'; return; }
+  ul.innerHTML = jobs.map(j => {
+    const err = j.error ? '<div class="err">' + j.error.slice(0, 200) + '</div>' : '';
+    return '<li>'
+      + fmtState(j.state)
+      + ' <span class="id">' + j.id + '</span>'
+      + ' <span class="meta">' + j.emulator + ' ' + j.commit.slice(0, 7)
+      + ' stage=' + j.stage
+      + '<span class="progress">' + pct(j) + eta(j) + '</span>'
+      + '</span>'
+      + err
+      + '</li>';
+  }).join('');
+  document.getElementById('updated').textContent = '(updated ' + new Date().toLocaleTimeString() + ')';
+}
+async function refresh() {
+  try {
+    const r = await fetch('/jobs');
+    const j = await r.json();
+    render(j);
+  } catch (e) {
+    document.getElementById('updated').textContent = '(fetch failed)';
+  }
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

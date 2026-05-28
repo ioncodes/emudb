@@ -19,6 +19,12 @@ pub struct Config {
 pub struct ServerConfig {
     pub bind: String,
     pub webhook_secret_env: String,
+    #[serde(default = "default_job_retention_hours")]
+    pub job_retention_hours: u64,
+}
+
+fn default_job_retention_hours() -> u64 {
+    48
 }
 
 #[derive(Debug, Clone, Deserialize)]

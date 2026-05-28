@@ -130,6 +130,15 @@ impl JobRegistry {
         serde_json::from_str(&text).ok()
     }
 
+    pub fn remove(&self, id: &str) -> JobResult<()> {
+        self.inner.lock().unwrap().remove(id);
+        let path = self.job_dir(id);
+        if path.exists() {
+            std::fs::remove_dir_all(&path)?;
+        }
+        Ok(())
+    }
+
     pub fn list(&self) -> Vec<JobStatus> {
         let mut map: HashMap<String, JobStatus> = self.inner.lock().unwrap().clone();
         if let Ok(entries) = std::fs::read_dir(&self.job_root) {
