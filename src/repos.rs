@@ -100,13 +100,31 @@ pub fn reset_hard(path: &Path, remote_ref: &str, log: &Path) -> JobResult<()> {
     Ok(())
 }
 
-pub fn submodule_update(path: &Path, log: &Path) -> JobResult<()> {
+pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<()> {
     let p = path.to_string_lossy().to_string();
     let git = |args: &[&str]| {
         let mut v = vec!["-C".to_string(), p.clone()];
         v.extend(args.iter().map(|s| s.to_string()));
         v
     };
+
+    for name in skip {
+        let _ = run_logged(
+            "git",
+            &git(&["config", &format!("submodule.{name}.active"), "false"]),
+            None,
+            log,
+            &[],
+        );
+        let _ = run_logged(
+            "git",
+            &git(&["submodule", "deinit", "-f", name]),
+            None,
+            log,
+            &[],
+        );
+        let _ = std::fs::remove_dir_all(path.join(name));
+    }
 
     let _ = run_logged(
         "git",
@@ -197,12 +215,13 @@ pub fn prepare_emulator_repo(
     commit: &str,
     paths: &RepoPaths,
     log: &Path,
+    skip_submodules: &[String],
 ) -> JobResult<PathBuf> {
     let path = paths.emulator_worktree(slug);
     ensure_repo(url, &path, log)?;
     fetch_repo(&path, log)?;
     checkout(&path, commit, log)?;
-    submodule_update(&path, log)?;
+    submodule_update(&path, log, skip_submodules)?;
 
     let head = rev_parse_head(&path, log)?;
     if !head.eq_ignore_ascii_case(commit) {

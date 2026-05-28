@@ -102,6 +102,7 @@ fn run_stages(
         &req.commit,
         &repo_paths,
         &clone_log,
+        &emu.skip_submodules,
     )?;
     let emu_short = repos::short_sha(&req.commit);
     let shotter_short = docker::dir_revision(&screenshotter_dir)?;

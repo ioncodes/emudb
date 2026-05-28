@@ -10,6 +10,8 @@ rom_subdir = "Sega - Saturn"
 supported_direct = ["cue", "chd", "iso", "mds", "ccd"]
 supported_archives = ["zip"]
 
+skip_submodules = ["vcpkg"]
+
 [runner]
 requires_gpu = false
 max_parallel_games = 4

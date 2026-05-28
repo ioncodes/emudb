@@ -122,6 +122,8 @@ pub struct EmulatorConfig {
     pub supported_direct: Vec<String>,
 
     pub supported_archives: Vec<String>,
+
+    pub skip_submodules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +194,8 @@ struct ShotterFile {
     supported_direct: Vec<String>,
     #[serde(default)]
     supported_archives: Vec<String>,
+    #[serde(default)]
+    skip_submodules: Vec<String>,
     #[serde(default)]
     runner: ShotterRunner,
 }
@@ -301,6 +305,7 @@ fn discover_emulators(root: &Path) -> Result<HashMap<String, EmulatorConfig>> {
             },
             supported_direct: sf.supported_direct,
             supported_archives: sf.supported_archives,
+            skip_submodules: sf.skip_submodules,
         };
 
         if let Some(prev) = map.insert(sf.slug.clone(), emu) {
