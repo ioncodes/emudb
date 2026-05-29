@@ -55,6 +55,7 @@ pub fn fetch_repo(path: &Path, log: &Path) -> JobResult<()> {
             "fetch".into(),
             "--all".into(),
             "--tags".into(),
+            "--force".into(),
             "--prune".into(),
         ],
         None,
