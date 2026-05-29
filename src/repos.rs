@@ -100,7 +100,7 @@ pub fn reset_hard(path: &Path, remote_ref: &str, log: &Path) -> JobResult<()> {
     Ok(())
 }
 
-pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<()> {
+pub fn submodule_update(path: &Path, log: &Path, skip: &[String], shallow: bool) -> JobResult<()> {
     let p = path.to_string_lossy().to_string();
     let git = |args: &[&str]| {
         let mut v = vec!["-C".to_string(), p.clone()];
@@ -108,28 +108,24 @@ pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<(
         v
     };
 
-    let _ = run_logged(
-        "git",
-        &git(&["submodule", "sync", "--recursive"]),
-        None,
-        log,
-        &[],
-    );
-    let first = run_logged(
-        "git",
-        &git(&[
-            "submodule",
-            "update",
-            "--init",
-            "--recursive",
-            "--force",
-            "--jobs",
-            "4",
-        ]),
-        None,
-        log,
-        &[],
-    )?;
+       let update_args = |with_depth: bool| -> Vec<&'static str> {
+        let mut a = vec!["submodule", "update", "--init"];
+        match (shallow, with_depth) {
+            (true, true) => a.extend(["--depth", "1"]),
+            (true, false) => {}
+            (false, _) => a.push("--recursive"),
+        }
+        a.extend(["--force", "--jobs", "4"]);
+        a
+    };
+
+    let mut sync = vec!["submodule", "sync"];
+    if !shallow {
+        sync.push("--recursive");
+    }
+    let _ = run_logged("git", &git(&sync), None, log, &[]);
+
+    let first = run_logged("git", &git(&update_args(true)), None, log, &[])?;
     if first.status != 0 {
         tracing::warn!(repo = %p, "submodule update failed; deinit + retry");
         let _ = run_logged(
@@ -139,22 +135,7 @@ pub fn submodule_update(path: &Path, log: &Path, skip: &[String]) -> JobResult<(
             log,
             &[],
         );
-        run_checked(
-            "git",
-            &git(&[
-                "submodule",
-                "update",
-                "--init",
-                "--recursive",
-                "--force",
-                "--jobs",
-                "4",
-            ]),
-            None,
-            log,
-            &[],
-            repo_err,
-        )?;
+        run_checked("git", &git(&update_args(false)), None, log, &[], repo_err)?;
     }
 
     for name in skip {
@@ -214,12 +195,13 @@ pub fn prepare_emulator_repo(
     paths: &RepoPaths,
     log: &Path,
     skip_submodules: &[String],
+    shallow_submodules: bool,
 ) -> JobResult<PathBuf> {
     let path = paths.emulator_worktree(slug);
     ensure_repo(url, &path, log)?;
     fetch_repo(&path, log)?;
     checkout(&path, commit, log)?;
-    submodule_update(&path, log, skip_submodules)?;
+    submodule_update(&path, log, skip_submodules, shallow_submodules)?;
 
     let head = rev_parse_head(&path, log)?;
     if !head.eq_ignore_ascii_case(commit) {

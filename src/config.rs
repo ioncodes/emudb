@@ -132,6 +132,8 @@ pub struct EmulatorConfig {
 
     pub skip_submodules: Vec<String>,
 
+    pub shallow_submodules: bool,
+
     pub per_game_args: Vec<String>,
 }
 
@@ -227,6 +229,8 @@ struct ShotterRunner {
     docker_env: std::collections::HashMap<String, String>,
     #[serde(default)]
     per_game_args: Vec<String>,
+    #[serde(default)]
+    shallow_submodules: bool,
 }
 
 fn default_parallel() -> u32 {
@@ -324,6 +328,7 @@ fn discover_emulators(root: &Path) -> Result<HashMap<String, EmulatorConfig>> {
             supported_direct: sf.supported_direct,
             supported_archives: sf.supported_archives,
             skip_submodules: sf.skip_submodules,
+            shallow_submodules: sf.runner.shallow_submodules,
             per_game_args: sf.runner.per_game_args,
         };
 

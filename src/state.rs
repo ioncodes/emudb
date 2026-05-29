@@ -64,6 +64,9 @@ pub struct JobStatus {
     pub games_done: Option<u32>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub games_skipped: Option<u32>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eta_at: Option<DateTime<Utc>>,
 }
 
@@ -84,6 +87,7 @@ impl JobStatus {
             message: None,
             games_total: None,
             games_done: None,
+            games_skipped: None,
             eta_at: None,
         }
     }

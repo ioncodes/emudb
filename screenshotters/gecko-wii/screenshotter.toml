@@ -1,0 +1,30 @@
+slug = "gecko-wii"
+
+emulator_repo = "https://github.com/ioncodes/gecko.git"
+emulator_default_branch = "master"
+
+archive_slug = "gecko-wii"
+
+rom_subdir = "Nintendo - Wii"
+
+supported_direct = ["iso", "rvz", "zip"]
+supported_archives = []
+
+[runner]
+requires_gpu = true
+gpu = "nvidia"
+max_parallel_games = 1
+output_mode = "multi-frame"
+timeout_seconds = 1200
+shallow_submodules = true
+
+per_game_args = ["{disc}", "{out}"]
+
+[runner.docker_env]
+NVIDIA_DRIVER_CAPABILITIES = "all"
+VK_ICD_FILENAMES = "/etc/vulkan/icd.d/nvidia_icd.json"
+GECKO_FS_ROOT = "/config/fs"
+
+[gecko]
+worker_binary = "/usr/local/bin/gecko-screenshotter-worker"
+bios_dir = "/config"

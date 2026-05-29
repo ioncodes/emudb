@@ -9,7 +9,8 @@ pub fn postprocess_output(
     mode: OutputMode,
     cfg: &PostProcessConfig,
     log_line: &mut dyn FnMut(&str),
-) -> JobResult<()> {
+) -> JobResult<Vec<String>> {
+    let mut skipped = Vec::new();
     for id in ids {
         let dir = output_root.join(id);
         if !dir.is_dir() {
@@ -19,24 +20,28 @@ pub fn postprocess_output(
         let before = frames.len();
 
         let kept = match mode {
-            OutputMode::SinglePng => {
-                let first = frames
-                    .first()
-                    .ok_or_else(|| JobError::PostProcess(format!("[{id}] produced no frames")))?;
-                if cfg.remove_single_color && is_single_color(&first.1, cfg.solid_tolerance)? {
-                    return Err(JobError::PostProcess(format!(
-                        "[{id}] single-png output is a single-colored (blank) frame"
-                    )));
+            OutputMode::SinglePng => match frames.first() {
+                None => Vec::new(),
+                Some(first) => {
+                    let blank =
+                        cfg.remove_single_color && is_single_color(&first.1, cfg.solid_tolerance)?;
+                    if blank {
+                        Vec::new()
+                    } else {
+                        vec![first.clone()]
+                    }
                 }
-                vec![first.clone()]
-            }
+            },
             OutputMode::MultiFrame => filter_frames(&frames, cfg)?,
         };
 
         if kept.is_empty() {
-            return Err(JobError::PostProcess(format!(
-                "[{id}] no usable frames after post-processing ({before} captured)"
-            )));
+            log_line(&format!(
+                "[{id}] no usable frames after post-processing ({before} captured) — skipping game"
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            skipped.push(id.clone());
+            continue;
         }
 
         reindex(&dir, &kept)?;
@@ -45,7 +50,7 @@ pub fn postprocess_output(
             kept.len()
         ));
     }
-    Ok(())
+    Ok(skipped)
 }
 
 fn integer_png_frames(dir: &Path) -> JobResult<Vec<(u32, PathBuf)>> {

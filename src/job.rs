@@ -106,6 +106,7 @@ fn run_stages(
         &repo_paths,
         &clone_log,
         &emu.skip_submodules,
+        emu.shallow_submodules,
     )?;
     let emu_short = repos::short_sha(&req.commit);
     let shotter_short = docker::dir_revision(&screenshotter_dir)?;
@@ -148,7 +149,7 @@ fn run_stages(
     let games_started_at = Utc::now();
 
     set_stage(registry, status, JobStage::RunScreenshotter);
-    process_games_concurrently(
+    let skipped_ids = process_games_concurrently(
         &emu,
         &resolved,
         &status.id.clone(),
@@ -168,8 +169,29 @@ fn run_stages(
         total,
     )?;
 
+     let rendered_ids: Vec<String> = ids
+        .iter()
+        .filter(|id| !skipped_ids.contains(id))
+        .cloned()
+        .collect();
+    if rendered_ids.is_empty() {
+        return Err(JobError::PostProcess(format!(
+            "no usable frames from any of the {} game(s)",
+            ids.len()
+        )));
+    }
+    if !skipped_ids.is_empty() {
+        status.games_skipped = Some(skipped_ids.len() as u32);
+        status.message = Some(format!(
+            "skipped {} game(s) with no usable frames: {}",
+            skipped_ids.len(),
+            skipped_ids.join(", ")
+        ));
+        let _ = registry.persist(status);
+    }
+
     set_stage(registry, status, JobStage::ValidateOutput);
-    validate::validate_output(&output_root, &ids, output_mode)?;
+    validate::validate_output(&output_root, &rendered_ids, output_mode)?;
 
     set_stage(registry, status, JobStage::Upload);
     upload::run_uploader(
@@ -208,11 +230,11 @@ fn process_games_concurrently(
     status: &mut JobStatus,
     started_at: DateTime<Utc>,
     total: usize,
-) -> JobResult<()> {
+) -> JobResult<Vec<String>> {
     // pending -> stage workers -> ready -> run workers -> prog channel
     let (pending_tx, pending_rx) = mpsc::channel::<roms::ResolvedGame>();
     let (ready_tx, ready_rx) = mpsc::sync_channel::<(roms::ResolvedGame, String)>(run_pool);
-    let (prog_tx, prog_rx) = mpsc::channel::<JobResult<String>>();
+    let (prog_tx, prog_rx) = mpsc::channel::<JobResult<(String, bool)>>();
 
     for g in resolved {
         pending_tx.send(g.clone()).expect("pending queue closed");
@@ -274,13 +296,17 @@ fn process_games_concurrently(
         let ppcfg = ppcfg.clone();
 
         run_handles.push(thread::spawn(move || loop {
-            if cancel.load(Ordering::SeqCst) {
-                return;
-            }
+            // Always drain the bounded `ready` channel, even after cancel, so
+            // stage workers blocked inside `ready_tx.send()` can unblock and
+            // return — otherwise the join() below deadlocks. Once cancelled we
+            // just discard the staged game instead of running it.
             let (game, container_input) = match rx.lock().unwrap().recv() {
                 Ok(item) => item,
                 Err(_) => return,
             };
+            if cancel.load(Ordering::SeqCst) {
+                continue;
+            }
             let result = run_and_postprocess(
                 &emu,
                 &job_id,
@@ -301,12 +327,17 @@ fn process_games_concurrently(
     drop(prog_tx);
 
     let mut done = 0usize;
+    let mut skipped: Vec<String> = Vec::new();
     let mut first_err: Option<JobError> = None;
     while let Ok(r) = prog_rx.recv() {
         match r {
-            Ok(_id) => {
+            Ok((_id, true)) => {
                 done += 1;
                 update_progress(registry, status, started_at, done, total);
+            }
+            Ok((id, false)) => {
+                // recorded once by the caller (run_stages) after the batch
+                skipped.push(id);
             }
             Err(e) => {
                 if first_err.is_none() {
@@ -327,7 +358,7 @@ fn process_games_concurrently(
     if let Some(e) = first_err {
         return Err(e);
     }
-    Ok(())
+    Ok(skipped)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -344,7 +375,7 @@ fn run_and_postprocess(
     output_root: &Path,
     output_mode: crate::config::OutputMode,
     ppcfg: &crate::config::PostProcessConfig,
-) -> JobResult<String> {
+) -> JobResult<(String, bool)> {
     docker::run_screenshotter_one(
         emu,
         job_id,
@@ -356,21 +387,20 @@ fn run_and_postprocess(
         run_log,
     )?;
 
-    {
-        let mut sink = |l: &str| log_append(run_log, l);
-        postprocess::postprocess_output(
-            output_root,
-            std::slice::from_ref(&game.id),
-            output_mode,
-            ppcfg,
-            &mut sink,
-        )?;
-    }
+    let mut sink = |l: &str| log_append(run_log, l);
+    let produced = postprocess::postprocess_output(
+        output_root,
+        std::slice::from_ref(&game.id),
+        output_mode,
+        ppcfg,
+        &mut sink,
+    )?
+    .is_empty();
 
     let _ = std::fs::remove_dir_all(Path::new("/staging").join(job_id).join(&game.id));
     log_append(roms_log, &format!("freed staged inputs for {}", game.id));
 
-    Ok(game.id.clone())
+    Ok((game.id.clone(), produced))
 }
 
 fn update_progress(
