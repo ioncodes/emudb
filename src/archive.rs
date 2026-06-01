@@ -4,7 +4,52 @@ use std::path::{Component, Path, PathBuf};
 
 const ANCHOR_PRIORITY: &[&str] = &["cue", "chd", "iso", "bin", "cso", "zso", "mds", "ccd"];
 
-pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> JobResult<Vec<PathBuf>> {
+/// How many times to retry a failed extraction before giving up.
+const EXTRACT_RETRIES: u32 = 5;
+/// Pause between extraction attempts. ROMs live on an SMB share that can
+/// glitch transiently (surfacing as ENOTDIR/IO errors mid-read); waiting a
+/// minute lets the mount recover before we try again.
+const EXTRACT_RETRY_PAUSE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Extract a zip, retrying transient I/O failures (e.g. SMB hiccups) up to
+/// `EXTRACT_RETRIES` times with a pause in between. Deterministic failures
+/// (path escape, empty archive) fail immediately without burning retries.
+pub fn extract_zip(
+    zip_path: &Path,
+    dest_dir: &Path,
+    log_line: &mut dyn FnMut(&str),
+) -> JobResult<Vec<PathBuf>> {
+    let mut attempt = 0;
+    loop {
+        match extract_zip_once(zip_path, dest_dir) {
+            Ok(files) => return Ok(files),
+            Err(e) if attempt < EXTRACT_RETRIES && is_retryable(&e) => {
+                attempt += 1;
+                log_line(&format!(
+                    "[archive] extracting {} failed ({e}); retry {}/{} in {}s",
+                    zip_path.display(),
+                    attempt,
+                    EXTRACT_RETRIES,
+                    EXTRACT_RETRY_PAUSE.as_secs()
+                ));
+                std::thread::sleep(EXTRACT_RETRY_PAUSE);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Logical failures that won't change on retry — don't waste minutes on them.
+fn is_retryable(err: &JobError) -> bool {
+    match err {
+        JobError::Archive(msg) => {
+            !msg.contains("escapes destination") && !msg.contains("contained no files")
+        }
+        _ => true,
+    }
+}
+
+fn extract_zip_once(zip_path: &Path, dest_dir: &Path) -> JobResult<Vec<PathBuf>> {
     let file = std::fs::File::open(zip_path)
         .map_err(|e| JobError::Archive(format!("opening {}: {e}", zip_path.display())))?;
     let mut zip = zip::ZipArchive::new(file)

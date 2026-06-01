@@ -14,7 +14,7 @@ skip_submodules = ["vcpkg"]
 
 [runner]
 requires_gpu = false
-max_parallel_games = 10
+max_parallel_games = 4
 output_mode = "multi-frame"
 timeout_seconds = 900
 

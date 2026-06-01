@@ -18,7 +18,7 @@ services:
       GIT_SSH_COMMAND: "ssh -i /host-ssh/id_ed25519 -o UserKnownHostsFile=/host-ssh/known_hosts -o IdentitiesOnly=yes"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /Volumes/Roms:/roms:ro
+      - roms:/roms:ro
       - ${PWD}/jobs:${PWD}/jobs
       - ${PWD}/repos:${PWD}/repos
       - ${PWD}/state:${PWD}/state
@@ -37,3 +37,9 @@ services:
 volumes:
   emudb-staging:
     name: emudb-staging
+  roms:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${SMB_HOST}/${SMB_SHARE}"
+      o: "username=${SMB_USER},password=${SMB_PASS},ro,vers=3.0,uid=0,gid=0,file_mode=0444,dir_mode=0555,iocharset=utf8,nounix"

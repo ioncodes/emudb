@@ -107,7 +107,7 @@ pub fn stage_one_game(
                 game.id,
                 game.rom_path.display()
             ));
-            let files = archive::extract_zip(&game.rom_path, &game_staging)?;
+            let files = archive::extract_zip(&game.rom_path, &game_staging, log_line)?;
             let anchor = archive::pick_anchor(&files, &emu.supported_direct)?;
             let anchor_rel = anchor
                 .strip_prefix(&game_staging)
