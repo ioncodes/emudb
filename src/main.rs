@@ -68,6 +68,15 @@ async fn main() -> Result<()> {
         let registry = registry.clone();
         tokio::spawn(async move {
             while let Some(status) = rx.recv().await {
+                // The channel holds a snapshot taken at enqueue time; re-check the
+                // registry (the source of truth) so jobs cancelled while queued are
+                // skipped instead of run.
+                if let Some(current) = registry.get(&status.id) {
+                    if current.state == state::JobState::Cancelled {
+                        tracing::info!(job = %status.id, "skipping cancelled job");
+                        continue;
+                    }
+                }
                 let config = config.clone();
                 let registry = registry.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -110,6 +119,7 @@ fn cleanup_old_jobs(registry: &JobRegistry, retention_hours: u64) {
             state::JobState::Completed
                 | state::JobState::Failed
                 | state::JobState::AlreadyCompleted
+                | state::JobState::Cancelled
         );
         if !terminal {
             continue;

@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::repos::RepoPaths;
-use crate::state::{JobRegistry, JobRequest, JobState, JobStatus};
+use crate::state::{CancelOutcome, JobRegistry, JobRequest, JobState, JobStatus};
 use crate::upload;
 use axum::{
     extract::{Path as AxPath, State},
@@ -29,6 +29,7 @@ pub fn router(state: AppState) -> Router {
         .route("/webhook/run", post(webhook_run))
         .route("/jobs", get(list_jobs))
         .route("/jobs/:id", get(get_job))
+        .route("/jobs/:id/cancel", post(cancel_job))
         .with_state(state)
 }
 
@@ -192,6 +193,46 @@ async fn get_job(State(state): State<AppState>, AxPath(id): AxPath<String>) -> i
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "job not found" })),
+        )
+            .into_response(),
+    }
+}
+
+async fn cancel_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxPath(id): AxPath<String>,
+) -> impl IntoResponse {
+    if !check_auth(&headers, &state.secret) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "missing or invalid bearer token" })),
+        )
+            .into_response();
+    }
+
+    match state.registry.request_cancel(&id) {
+        Ok(CancelOutcome::Cancelled) => (
+            StatusCode::OK,
+            Json(json!({ "job_id": id, "state": "cancelled" })),
+        )
+            .into_response(),
+        Ok(CancelOutcome::NotCancellable(current)) => (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "job is not queued and cannot be cancelled",
+                "state": current,
+            })),
+        )
+            .into_response(),
+        Ok(CancelOutcome::NotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "job not found" })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("cancel failed: {e}") })),
         )
             .into_response(),
     }

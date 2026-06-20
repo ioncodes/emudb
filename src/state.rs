@@ -13,6 +13,7 @@ pub enum JobState {
     Completed,
     Failed,
     AlreadyCompleted,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +94,13 @@ impl JobStatus {
     }
 }
 
+pub enum CancelOutcome {
+    Cancelled,
+    /// Job exists but is past the queue (running or terminal); carries its state.
+    NotCancellable(JobState),
+    NotFound,
+}
+
 #[derive(Clone)]
 pub struct JobRegistry {
     job_root: PathBuf,
@@ -132,6 +140,22 @@ impl JobRegistry {
         let path = self.status_path(id);
         let text = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&text).ok()
+    }
+
+    /// Attempt to cancel a job. Only jobs still in the `Queued` state can be
+    /// cancelled; once running or terminal, the request is rejected.
+    pub fn request_cancel(&self, id: &str) -> JobResult<CancelOutcome> {
+        let Some(mut status) = self.get(id) else {
+            return Ok(CancelOutcome::NotFound);
+        };
+        if status.state != JobState::Queued {
+            return Ok(CancelOutcome::NotCancellable(status.state));
+        }
+        status.state = JobState::Cancelled;
+        status.finished_at = Some(Utc::now());
+        status.message = Some("cancelled before execution".to_string());
+        self.persist(&status)?;
+        Ok(CancelOutcome::Cancelled)
     }
 
     pub fn remove(&self, id: &str) -> JobResult<()> {
