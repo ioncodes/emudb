@@ -13,6 +13,7 @@ struct IplEntry {
     std::filesystem::path path;
     std::string version;
     ymir::db::SystemRegion region;
+    bool region_free = false;
 };
 
 class IplCatalog {

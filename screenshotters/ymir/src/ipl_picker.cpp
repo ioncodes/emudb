@@ -31,14 +31,20 @@ const IplEntry* IplCatalog::pick(ymir::media::AreaCode area_codes) const {
 
     const bool jp = BitmaskEnum(area_codes).AnyOf(ymir::media::AreaCode::Japan);
 
-    const std::array<SystemRegion, 3> order =
-        jp ? std::array{SystemRegion::JP, SystemRegion::RegionFree, SystemRegion::US_EU}
-           : std::array{SystemRegion::US_EU, SystemRegion::RegionFree, SystemRegion::JP};
+    const std::array<SystemRegion, 2> order =
+        jp ? std::array{SystemRegion::JP, SystemRegion::US_EU} : std::array{SystemRegion::US_EU, SystemRegion::JP};
 
-    for (auto r : order) {
-        if (const auto* p = find(r))
-            return p;
+    // Prefer an exact region match; fall back to any region-free IPL before the other region.
+    if (const auto* p = find(order[0]))
+        return p;
+
+    for (const auto& [region, entry] : by_region_) {
+        if (entry.region_free)
+            return &entry;
     }
+
+    if (const auto* p = find(order[1]))
+        return p;
 
     return &by_region_.begin()->second;
 }
@@ -68,7 +74,7 @@ IplCatalog scan_ipl_dir(const std::filesystem::path& dir) {
             continue;
         }
 
-        cat.add(IplEntry{e.path(), info->version, info->region});
+        cat.add(IplEntry{e.path(), info->version, info->region, info->regionFree});
     }
 
     return cat;

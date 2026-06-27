@@ -17,8 +17,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
-#include <ios>
 #include <span>
 #include <vector>
 
@@ -57,27 +55,9 @@ namespace {
     }
 
     void install_smpc_bypass(ymir::Saturn& saturn) {
-        const auto settings_path =
-            std::filesystem::temp_directory_path() / fmt::format("ymir-shot-smpc-{}.bin", ::getpid());
-
-        std::ofstream out(settings_path, std::ios::binary | std::ios::trunc);
-
-        const std::uint8_t version[4] = {0x01, 0, 0, 0};
-        const std::uint8_t smem[4] = {0, 0, 0, 0};
-        const bool ste = true;
-        const std::int64_t offset = 0;
-        const std::int64_t timestamp = 0;
-
-        out.write(reinterpret_cast<const char*>(version), sizeof(version));
-        out.write(reinterpret_cast<const char*>(smem), sizeof(smem));
-        out.write(reinterpret_cast<const char*>(&ste), sizeof(ste));
-        out.write(reinterpret_cast<const char*>(&offset), sizeof(offset));
-        out.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
-        out.close();
-
-        std::error_code ec;
-        saturn.SMPC.LoadPersistentDataFrom(settings_path, ec);
-        std::filesystem::remove(settings_path, ec);
+        ymir::smpc::PersistentSMPCData smpcData{};
+        smpcData.STE = true;
+        saturn.SMPC.LoadPersistentData(smpcData);
     }
 
     bool is_unicolor(const std::vector<std::uint32_t>& pixels) {
