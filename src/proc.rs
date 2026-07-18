@@ -132,15 +132,15 @@ pub fn run_checked_with_timeout(
         .spawn()
         .map_err(|e| JobError::Other(format!("spawning '{program}': {e}")))?;
 
-    let done = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let timed_out = Arc::new(AtomicBool::new(false));
     let watcher = {
-        let done = Arc::clone(&done);
         let timed_out = Arc::clone(&timed_out);
         let container = kill_container.to_string();
         std::thread::spawn(move || {
-            std::thread::sleep(timeout);
-            if !done.load(Ordering::SeqCst) {
+            // Wakes immediately when the main thread signals completion;
+            // only a real timeout (RecvTimeoutError::Timeout) kills the container.
+            if done_rx.recv_timeout(timeout).is_err() {
                 timed_out.store(true, Ordering::SeqCst);
                 let _ = Command::new("docker").args(["kill", &container]).status();
             }
@@ -150,7 +150,7 @@ pub fn run_checked_with_timeout(
     let output = child
         .wait_with_output()
         .map_err(|e| JobError::Other(format!("waiting for '{program}': {e}")));
-    done.store(true, Ordering::SeqCst);
+    let _ = done_tx.send(());
     let _ = watcher.join();
     let output = output?;
 
