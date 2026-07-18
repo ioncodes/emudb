@@ -1,6 +1,6 @@
 use crate::config::{EmulatorConfig, GpuMode};
 use crate::error::{JobError, JobResult};
-use crate::proc::run_checked;
+use crate::proc::{run_checked, run_checked_with_timeout};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -85,11 +85,12 @@ pub fn run_screenshotter_one(
 
     std::fs::create_dir_all(output.join(game_id))?;
 
+    let container_name = format!("shot-{}-{}-{}", emu.slug, job_id, game_id);
     let mut args: Vec<String> = vec![
         "run".into(),
         "--rm".into(),
         "--name".into(),
-        format!("shot-{}-{}-{}", emu.slug, job_id, game_id),
+        container_name.clone(),
     ];
     match emu.gpu_mode {
         GpuMode::Nvidia => {
@@ -134,6 +135,22 @@ pub fn run_screenshotter_one(
         );
     }
 
-    run_checked("docker", &args, None, log, &[], JobError::DockerRun)?;
+    match emu.timeout_seconds {
+        Some(secs) => {
+            run_checked_with_timeout(
+                "docker",
+                &args,
+                None,
+                log,
+                &[],
+                JobError::DockerRun,
+                std::time::Duration::from_secs(secs),
+                &container_name,
+            )?;
+        }
+        None => {
+            run_checked("docker", &args, None, log, &[], JobError::DockerRun)?;
+        }
+    }
     Ok(())
 }

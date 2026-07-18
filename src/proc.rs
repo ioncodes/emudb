@@ -1,7 +1,10 @@
 use crate::error::{JobError, JobResult};
 use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 pub struct CmdOutput {
     pub status: i32,
@@ -90,6 +93,105 @@ pub fn run_checked(
         )));
     }
     Ok(out)
+}
+
+/// Like [`run_checked`], but if `timeout` elapses before the process exits, the
+/// container named `kill_container` is force-stopped via `docker kill` and the
+/// call fails instead of blocking forever.
+#[allow(clippy::too_many_arguments)]
+pub fn run_checked_with_timeout(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    log_path: &Path,
+    redact: &[String],
+    err: impl Fn(String) -> JobError,
+    timeout: Duration,
+    kill_container: &str,
+) -> JobResult<CmdOutput> {
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
+
+    let header = redact_str(&render_cmdline(program, args), redact);
+    writeln!(log, "$ {header}")?;
+
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| JobError::Other(format!("spawning '{program}': {e}")))?;
+
+    let done = Arc::new(AtomicBool::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let done = Arc::clone(&done);
+        let timed_out = Arc::clone(&timed_out);
+        let container = kill_container.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(timeout);
+            if !done.load(Ordering::SeqCst) {
+                timed_out.store(true, Ordering::SeqCst);
+                let _ = Command::new("docker").args(["kill", &container]).status();
+            }
+        })
+    };
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| JobError::Other(format!("waiting for '{program}': {e}")));
+    done.store(true, Ordering::SeqCst);
+    let _ = watcher.join();
+    let output = output?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let status = output.status.code().unwrap_or(-1);
+
+    if !stdout.is_empty() {
+        writeln!(log, "{}", redact_str(&stdout, redact))?;
+    }
+    if !stderr.is_empty() {
+        writeln!(log, "[stderr]\n{}", redact_str(&stderr, redact))?;
+    }
+    if timed_out.load(Ordering::SeqCst) {
+        writeln!(
+            log,
+            "[timeout] killed after {}s, exit {status}\n",
+            timeout.as_secs()
+        )?;
+        return Err(err(format!(
+            "`{program}` timed out after {}s and was killed (see {})",
+            timeout.as_secs(),
+            log_path.display()
+        )));
+    }
+    writeln!(log, "[exit] {status}\n")?;
+
+    if status != 0 {
+        let tail = redact_str(&stderr, redact);
+        return Err(err(format!(
+            "`{program}` exited {status} (see {}): {}",
+            log_path.display(),
+            tail.lines().rev().take(5).collect::<Vec<_>>().join(" | ")
+        )));
+    }
+
+    Ok(CmdOutput {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 fn redact_str(s: &str, redact: &[String]) -> String {

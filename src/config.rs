@@ -122,6 +122,7 @@ pub struct EmulatorConfig {
 
     pub max_parallel_games: u32,
     pub max_parallel_stages: u32,
+    pub timeout_seconds: Option<u64>,
     pub output_mode: OutputMode,
     pub docker_mounts: Vec<String>,
     pub docker_env: Vec<(String, String)>,
@@ -231,6 +232,8 @@ struct ShotterRunner {
     per_game_args: Vec<String>,
     #[serde(default)]
     shallow_submodules: bool,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
 }
 
 fn default_parallel() -> u32 {
@@ -313,6 +316,7 @@ fn discover_emulators(root: &Path) -> Result<HashMap<String, EmulatorConfig>> {
             ),
             max_parallel_games: sf.runner.max_parallel_games,
             max_parallel_stages: sf.runner.max_parallel_stages,
+            timeout_seconds: sf.runner.timeout_seconds,
             output_mode: sf
                 .runner
                 .output_mode
