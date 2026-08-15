@@ -1,6 +1,7 @@
 #include "png_writer.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_STATIC
 #define STBI_WRITE_NO_STDIO
 #include "third_party/stb_image_write.h"
 

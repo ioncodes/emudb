@@ -7,13 +7,25 @@ ENV VCPKG_ROOT=/opt/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential git cmake ninja-build pkg-config curl zip unzip tar \
-        ca-certificates python3 autoconf automake autoconf-archive libtool \
+        build-essential git ninja-build pkg-config curl zip unzip tar \
+        ca-certificates gpg wget python3 autoconf automake autoconf-archive libtool \
         bison flex \
         libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
         libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdrm-dev libgbm-dev \
         libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
         libasound2-dev libpulse-dev libdbus-1-dev libudev-dev libibus-1.0-dev \
+        libvulkan-dev glslc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ubuntu 24.04's packaged cmake (3.28) predates the `string(JSON ... STRING_ENCODE)`
+# mode vcpkg's SPDX/SBOM generation relies on, which breaks every port install.
+# Pull a current cmake from Kitware's apt repo instead of the distro package.
+RUN wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
+        | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ noble main" \
+        > /etc/apt/sources.list.d/kitware.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" \
